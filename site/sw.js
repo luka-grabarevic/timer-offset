@@ -1,4 +1,4 @@
-const CACHE = 'washer-offset-v3';
+const CACHE = 'washer-offset-v4';
 const ASSETS = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {

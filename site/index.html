@@ -33,7 +33,16 @@
       position: absolute; inset: 0; width: 100%; height: 100%;
       opacity: 0; border: 0; cursor: pointer;
     }
-    .now { font-size: .95rem; opacity: .7; margin-top: 12px; }
+    .now { font-size: 1.2rem; opacity: .6; }
+    .field + .field { margin-top: 16px; }
+    .row { display: flex; gap: 8px; }
+    .row .time { flex: 1; }
+    .reset {
+      font-size: 1rem; padding: 0 16px; border-radius: 10px; cursor: pointer;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas);
+      background: Canvas; color: CanvasText;
+    }
+    .reset[hidden] { display: none; }
     .result { text-align: center; }
     .offset { font-size: 4.5rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
     .finish { font-size: 1.1rem; margin-top: 6px; }
@@ -50,12 +59,23 @@
   <h1>Washing machine offset</h1>
 
   <div class="card">
-    <label for="target">Finish at</label>
-    <div class="time">
-      <span id="targetText"></span>
-      <input type="time" id="target" required>
+    <div class="field">
+      <label for="start">Start at</label>
+      <div class="row">
+        <div class="time">
+          <span id="startText"></span>
+          <input type="time" id="start">
+        </div>
+        <button type="button" class="reset" id="startReset" hidden>Now</button>
+      </div>
     </div>
-    <div class="now">Now: <span id="now"></span></div>
+    <div class="field">
+      <label for="target">Finish at</label>
+      <div class="time">
+        <span id="targetText"></span>
+        <input type="time" id="target" required>
+      </div>
+    </div>
   </div>
 
   <div class="card result">
@@ -73,6 +93,8 @@
     const STORAGE_KEY = 'targetTime';
     const $ = id => document.getElementById(id);
     const target = $('target');
+    const start = $('start');
+    const startReset = $('startReset');
     const pad = n => String(n).padStart(2, '0');
 
     target.value = localStorage.getItem(STORAGE_KEY) || '15:30';
@@ -81,16 +103,37 @@
       localStorage.setItem(STORAGE_KEY, target.value);
       update();
     });
-    target.addEventListener('click', () => {
-      try { target.showPicker(); } catch { /* not supported; native tap behavior applies */ }
+    start.addEventListener('change', update);
+    startReset.addEventListener('click', () => {
+      start.value = '';
+      update();
     });
+    for (const input of [target, start]) {
+      input.addEventListener('click', () => {
+        try { input.showPicker(); } catch { /* not supported; native tap behavior applies */ }
+      });
+    }
 
     const fmtTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     const fmtOffset = min => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
 
     function update() {
+      const custom = Boolean(start.value);
       const now = new Date();
-      $('now').textContent = fmtTime(now);
+      now.setSeconds(0, 0);
+      if (custom) {
+        const [sh, sm] = start.value.split(':').map(Number);
+        now.setHours(sh, sm);
+      }
+      const startText = $('startText');
+      startText.textContent = custom ? start.value : '';
+      if (!custom) {
+        const hint = document.createElement('span');
+        hint.className = 'now';
+        hint.textContent = 'now · ';
+        startText.append(hint, fmtTime(now));
+      }
+      startReset.hidden = !custom;
       $('targetText').textContent = target.value;
 
       const [h, m] = target.value.split(':').map(Number);
