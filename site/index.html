@@ -18,6 +18,17 @@
       padding: 24px 16px; gap: 20px; background: Canvas; color: CanvasText;
     }
     h1 { margin: 0; font-size: 1.3rem; font-weight: 600; opacity: .8; }
+    header {
+      width: 100%; max-width: 420px; display: flex;
+      align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .lang { display: flex; border-radius: 8px; overflow: hidden;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); }
+    .lang button {
+      font-size: .85rem; padding: 6px 10px; border: 0; cursor: pointer;
+      background: Canvas; color: CanvasText;
+    }
+    .lang button[aria-pressed="true"] { background: var(--accent); color: #fff; }
     .card {
       width: 100%; max-width: 420px; padding: 20px; border-radius: 16px;
       background: color-mix(in srgb, CanvasText 6%, Canvas);
@@ -61,23 +72,29 @@
   </style>
 </head>
 <body>
-  <h1>Washing machine offset</h1>
+  <header>
+    <h1 data-i18n="title">Washing machine offset</h1>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en">EN</button>
+      <button type="button" data-lang="de">DE</button>
+    </div>
+  </header>
 
-  <button type="button" class="install" id="install" hidden>Install app</button>
+  <button type="button" class="install" id="install" data-i18n="install" hidden>Install app</button>
 
   <div class="card">
     <div class="field">
-      <label for="start">Start at</label>
+      <label for="start" data-i18n="startAt">Start at</label>
       <div class="row">
         <div class="time">
           <span id="startText"></span>
           <input type="time" id="start">
         </div>
-        <button type="button" class="reset" id="startReset" hidden>Now</button>
+        <button type="button" class="reset" id="startReset" data-i18n="nowButton" hidden>Now</button>
       </div>
     </div>
     <div class="field">
-      <label for="target">Finish at</label>
+      <label for="target" data-i18n="finishAt">Finish at</label>
       <div class="time">
         <span id="targetText"></span>
         <input type="time" id="target" required>
@@ -86,7 +103,7 @@
   </div>
 
   <div class="card result">
-    <label>Set offset to</label>
+    <label data-i18n="setOffset">Set offset to</label>
     <div class="offset" id="offset">–</div>
     <div class="finish" id="finish"></div>
     <div class="alts">
@@ -103,6 +120,69 @@
     const start = $('start');
     const startReset = $('startReset');
     const pad = n => String(n).padStart(2, '0');
+
+    const I18N = {
+      en: {
+        docTitle: 'Washer Offset',
+        title: 'Washing machine offset',
+        install: 'Install app',
+        startAt: 'Start at',
+        finishAt: 'Finish at',
+        nowButton: 'Now',
+        nowHint: 'now · ',
+        setOffset: 'Set offset to',
+        finishes: t => `finishes ≈ ${t}`,
+      },
+      de: {
+        docTitle: 'Waschmaschinen-Timer',
+        title: 'Waschmaschinen-Timer',
+        install: 'App installieren',
+        startAt: 'Start um',
+        finishAt: 'Fertig um',
+        nowButton: 'Jetzt',
+        nowHint: 'jetzt · ',
+        setOffset: 'Einstellen auf',
+        finishes: t => `fertig ≈ ${t}`,
+      },
+    };
+    const LANG_COOKIE = 'lang';
+    const cookiePath = location.pathname.replace(/[^/]*$/, '');
+
+    function readLangCookie() {
+      const match = document.cookie.match(/(?:^|;\s*)lang=(\w+)/);
+      return match && I18N[match[1]] ? match[1] : null;
+    }
+
+    function systemLang() {
+      const langs = navigator.languages?.length ? navigator.languages : [navigator.language || 'en'];
+      for (const l of langs) {
+        const code = l.toLowerCase().slice(0, 2);
+        if (I18N[code]) return code;
+      }
+      return 'en';
+    }
+
+    let lang = readLangCookie() || systemLang();
+    const t = key => I18N[lang][key];
+
+    function applyLang() {
+      document.documentElement.lang = lang;
+      document.title = t('docTitle');
+      for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+      for (const btn of document.querySelectorAll('[data-lang]')) {
+        btn.setAttribute('aria-pressed', String(btn.dataset.lang === lang));
+      }
+    }
+
+    for (const btn of document.querySelectorAll('[data-lang]')) {
+      btn.addEventListener('click', () => {
+        lang = btn.dataset.lang;
+        const secure = location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = `${LANG_COOKIE}=${lang}; Max-Age=31536000; Path=${cookiePath}; SameSite=Lax${secure}`;
+        applyLang();
+        update();
+      });
+    }
 
     target.value = localStorage.getItem(STORAGE_KEY) || '15:30';
     target.addEventListener('change', () => {
@@ -137,7 +217,7 @@
       if (!custom) {
         const hint = document.createElement('span');
         hint.className = 'now';
-        hint.textContent = 'now · ';
+        hint.textContent = t('nowHint');
         startText.append(hint, fmtTime(now));
       }
       startReset.hidden = !custom;
@@ -155,13 +235,14 @@
       const finishAt = min => fmtTime(new Date(now.getTime() + min * 60000));
 
       $('offset').textContent = fmtOffset(best);
-      $('finish').textContent = `finishes ≈ ${finishAt(best)}`;
+      $('finish').textContent = t('finishes')(finishAt(best));
       $('lowerOffset').textContent = fmtOffset(lower);
       $('lowerFinish').textContent = `→ ${finishAt(lower)}`;
       $('upperOffset').textContent = fmtOffset(upper);
       $('upperFinish').textContent = `→ ${finishAt(upper)}`;
     }
 
+    applyLang();
     update();
     setInterval(update, 15000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) update(); });
