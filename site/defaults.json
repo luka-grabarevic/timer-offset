@@ -2,10 +2,11 @@
   "devices": [
     {
       "id": "washer",
+      "default": true,
       "name": { "en": "Washing machine", "de": "Waschmaschine" },
       "target": "15:30",
       "programs": [
-        { "id": "cotton", "name": "Baumwolle", "duration": "2:39" }
+        { "id": "cotton", "name": "Baumwolle", "duration": "2:39", "default": true }
       ]
     },
     {
@@ -13,7 +14,7 @@
       "name": { "en": "Dishwasher", "de": "Geschirrspüler" },
       "target": "15:30",
       "programs": [
-        { "id": "eco", "name": "ECO", "duration": "3:30" }
+        { "id": "eco", "name": "ECO", "duration": "3:30", "default": true }
       ]
     }
   ]

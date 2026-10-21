@@ -241,11 +241,23 @@
       },
     };
     const LANG_COOKIE = 'lang';
+    const DEVICE_COOKIE = 'device';
+    const programCookie = dev => `program-${encodeURIComponent(dev.id)}`;
     const cookiePath = location.pathname.replace(/[^/]*$/, '');
 
+    function getCookie(name) {
+      const entry = document.cookie.split('; ').find(c => c.startsWith(`${name}=`));
+      return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null;
+    }
+
+    function setCookie(name, value, maxAge = 31536000) {
+      const secure = location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=${cookiePath}; SameSite=Lax${secure}`;
+    }
+
     function readLangCookie() {
-      const match = document.cookie.match(/(?:^|;\s*)lang=(\w+)/);
-      return match && I18N[match[1]] ? match[1] : null;
+      const value = getCookie(LANG_COOKIE);
+      return I18N[value] ? value : null;
     }
 
     function systemLang() {
@@ -274,8 +286,7 @@
     for (const btn of document.querySelectorAll('[data-lang]')) {
       btn.addEventListener('click', () => {
         lang = btn.dataset.lang;
-        const secure = location.protocol === 'https:' ? '; Secure' : '';
-        document.cookie = `${LANG_COOKIE}=${lang}; Max-Age=31536000; Path=${cookiePath}; SameSite=Lax${secure}`;
+        setCookie(LANG_COOKIE, lang);
         applyLang();
         renderSelectors();
         update();
@@ -288,19 +299,21 @@
       const [h, m] = String(hm).split(':').map(Number);
       return (h || 0) * 60 + (m || 0);
     };
-    const newDevice = target => ({ id: uid(), name: '', target, program: '', programs: [] });
+    const newDevice = target => ({ id: uid(), name: '', target, programs: [] });
 
     function defaultState() {
       const devices = defaults.devices.map(d => ({
         id: d.id,
         name: '',
         defaultName: d.name,
+        isDefault: d.default === true,
         target: d.target || '15:30',
-        program: d.programs[0]?.id ?? '',
-        programs: d.programs.map(p => ({ id: p.id, name: p.name, minutes: toMinutes(p.duration) })),
+        programs: d.programs.map(p => ({
+          id: p.id, name: p.name, minutes: toMinutes(p.duration), isDefault: p.default === true,
+        })),
       }));
       if (!devices.length) devices.push(newDevice('15:30'));
-      return { device: devices[0].id, devices };
+      return { devices };
     }
 
     function loadState() {
@@ -316,8 +329,9 @@
 
     let state;
     const save = () => localStorage.setItem(STATE_KEY, JSON.stringify(state));
-    const currentDevice = () => state.devices.find(d => d.id === state.device) || state.devices[0];
-    const currentProgram = dev => dev.programs.find(p => p.id === dev.program) || dev.programs[0];
+    const pickItem = (items, id) => items.find(x => x.id === id) || items.find(x => x.isDefault) || items[0];
+    const currentDevice = () => pickItem(state.devices, getCookie(DEVICE_COOKIE));
+    const currentProgram = dev => pickItem(dev.programs, getCookie(programCookie(dev)));
     const localizedDefaultName = d => d.defaultName?.[lang] || d.defaultName?.en;
     const deviceName = d => d.name.trim() || localizedDefaultName(d) || t('newDevice');
     const programName = p => p.name.trim() || t('unnamed');
@@ -334,14 +348,12 @@
     }
 
     deviceSel.addEventListener('change', () => {
-      state.device = deviceSel.value;
-      save();
+      setCookie(DEVICE_COOKIE, deviceSel.value);
       renderSelectors();
       update();
     });
     programSel.addEventListener('change', () => {
-      currentDevice().program = programSel.value;
-      save();
+      setCookie(programCookie(currentDevice()), programSel.value);
       update();
     });
     target.addEventListener('change', () => {
@@ -422,7 +434,6 @@
         addProgram.addEventListener('click', () => {
           const p = { id: uid(), name: '', minutes: 60 };
           dev.programs.push(p);
-          if (dev.programs.length === 1) dev.program = p.id;
           changed(true);
         });
 
@@ -436,11 +447,13 @@
     });
     $('closeSettings').addEventListener('click', () => $('settings').close());
     $('addDevice').addEventListener('click', () => {
-      state.devices.push({ id: uid(), name: '', target: currentDevice().target, program: '', programs: [] });
+      state.devices.push(newDevice(currentDevice().target));
       changed(true);
     });
     $('resetDefaults').addEventListener('click', () => {
       if (!confirm(t('resetConfirm'))) return;
+      setCookie(DEVICE_COOKIE, '', 0);
+      for (const dev of state.devices) setCookie(programCookie(dev), '', 0);
       state = defaultState();
       changed(true);
     });
