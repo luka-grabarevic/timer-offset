@@ -1,5 +1,5 @@
-const CACHE = 'washer-offset-v4';
-const ASSETS = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'washer-offset-v5';
+const ASSETS = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
