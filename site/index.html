@@ -69,20 +69,66 @@
     }
     .alt b { display: block; font-size: 1.4rem; }
     .alt span { font-size: .85rem; opacity: .7; }
+    .alts[hidden] { display: none; }
+    .warn { color: #dc2626; }
+    .runtime { font-size: .9rem; opacity: .7; margin-top: 4px; }
+    .grow { flex: 1; min-width: 0; }
+    select, .settings input {
+      width: 100%; font-size: 1rem; padding: 10px; border-radius: 10px;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas);
+      background: Canvas; color: CanvasText;
+    }
+    .tools { display: flex; gap: 8px; align-items: center; }
+    .icon-btn {
+      font-size: 1.4rem; line-height: 1; padding: 4px 8px; border: 0; cursor: pointer;
+      background: none; color: CanvasText;
+    }
+    .btn {
+      font-size: 1rem; padding: 10px 14px; border-radius: 10px; cursor: pointer;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas);
+      background: Canvas; color: CanvasText;
+    }
+    .btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+    dialog.settings {
+      width: min(100% - 24px, 440px); max-height: 90vh; padding: 16px;
+      border: 0; border-radius: 16px; background: Canvas; color: CanvasText;
+    }
+    dialog.settings::backdrop { background: rgb(0 0 0 / .5); }
+    .settings h2 { margin: 0 0 12px; font-size: 1.2rem; }
+    .settings fieldset {
+      display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; padding: 12px;
+      border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas); border-radius: 12px;
+    }
+    .settings .line { display: flex; gap: 6px; align-items: center; }
+    .settings .num { width: 3.4em; flex: none; padding: 10px 4px; text-align: center; }
+    .settings .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
   </style>
 </head>
 <body>
   <header>
     <h1 data-i18n="title">Washing machine offset</h1>
-    <div class="lang" role="group" aria-label="Language">
-      <button type="button" data-lang="en">EN</button>
-      <button type="button" data-lang="de">DE</button>
+    <div class="tools">
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en">EN</button>
+        <button type="button" data-lang="de">DE</button>
+      </div>
+      <button type="button" class="icon-btn" id="openSettings">&#9881;&#xFE0E;</button>
     </div>
   </header>
 
   <button type="button" class="install" id="install" data-i18n="install" hidden>Install app</button>
 
   <div class="card">
+    <div class="field row">
+      <div class="grow">
+        <label for="device" data-i18n="device">Device</label>
+        <select id="device"></select>
+      </div>
+      <div class="grow">
+        <label for="program" data-i18n="program">Program</label>
+        <select id="program"></select>
+      </div>
+    </div>
     <div class="field">
       <label for="start" data-i18n="startAt">Start at</label>
       <div class="row">
@@ -106,43 +152,92 @@
     <label data-i18n="setOffset">Set offset to</label>
     <div class="offset" id="offset">–</div>
     <div class="finish" id="finish"></div>
-    <div class="alts">
+    <div class="runtime" id="runtime"></div>
+    <div class="alts" id="alts">
       <div class="alt"><b id="lowerOffset"></b><span id="lowerFinish"></span></div>
       <div class="alt"><b id="upperOffset"></b><span id="upperFinish"></span></div>
     </div>
   </div>
 
+  <dialog class="settings" id="settings">
+    <h2 data-i18n="settings">Settings</h2>
+    <div id="settingsList"></div>
+    <div class="actions">
+      <button type="button" class="btn" id="addDevice" data-i18n="addDevice">+ Device</button>
+      <button type="button" class="btn" id="resetDefaults" data-i18n="reset">Reset</button>
+      <button type="button" class="btn primary" id="closeSettings" data-i18n="close">Done</button>
+    </div>
+  </dialog>
+
   <script>
     const STEP = 30;
-    const STORAGE_KEY = 'targetTime';
+    const STATE_KEY = 'state-v2';
     const $ = id => document.getElementById(id);
     const target = $('target');
     const start = $('start');
     const startReset = $('startReset');
+    const deviceSel = $('device');
+    const programSel = $('program');
     const pad = n => String(n).padStart(2, '0');
+    const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+    const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
     const I18N = {
       en: {
-        docTitle: 'Washer Offset',
-        title: 'Washing machine offset',
+        docTitle: 'Timer Offset',
+        title: 'Timer offset',
         install: 'Install app',
+        device: 'Device',
+        program: 'Program',
         startAt: 'Start at',
         finishAt: 'Finish at',
         nowButton: 'Now',
         nowHint: 'now · ',
         setOffset: 'Set offset to',
         finishes: t => `finishes ≈ ${t}`,
+        tooLate: t => `Too late – earliest finish ${t}`,
+        runtime: d => `Runtime ${d}h`,
+        newDevice: 'New device',
+        deviceName: 'Device name',
+        programName: 'Program name',
+        unnamed: 'Unnamed',
+        settings: 'Settings',
+        addDevice: '+ Device',
+        addProgram: '+ Program',
+        deleteDevice: 'Delete device',
+        deleteProgram: 'Delete program',
+        deleteConfirm: n => `Delete “${n}”?`,
+        reset: 'Reset',
+        resetConfirm: 'Reset all devices and programs to defaults?',
+        close: 'Done',
       },
       de: {
-        docTitle: 'Waschmaschinen-Timer',
-        title: 'Waschmaschinen-Timer',
+        docTitle: 'Zeitvorwahl',
+        title: 'Zeitvorwahl',
         install: 'App installieren',
+        device: 'Gerät',
+        program: 'Programm',
         startAt: 'Start um',
         finishAt: 'Fertig um',
         nowButton: 'Jetzt',
         nowHint: 'jetzt · ',
         setOffset: 'Einstellen auf',
         finishes: t => `fertig ≈ ${t}`,
+        tooLate: t => `Zu spät – frühestens fertig ${t}`,
+        runtime: d => `Laufzeit ${d}h`,
+        newDevice: 'Neues Gerät',
+        deviceName: 'Gerätename',
+        programName: 'Programmname',
+        unnamed: 'Ohne Namen',
+        settings: 'Einstellungen',
+        addDevice: '+ Gerät',
+        addProgram: '+ Programm',
+        deleteDevice: 'Gerät löschen',
+        deleteProgram: 'Programm löschen',
+        deleteConfirm: n => `„${n}“ löschen?`,
+        reset: 'Zurücksetzen',
+        resetConfirm: 'Alle Geräte und Programme auf Standard zurücksetzen?',
+        close: 'Fertig',
       },
     };
     const LANG_COOKIE = 'lang';
@@ -172,6 +267,8 @@
       for (const btn of document.querySelectorAll('[data-lang]')) {
         btn.setAttribute('aria-pressed', String(btn.dataset.lang === lang));
       }
+      $('openSettings').title = t('settings');
+      $('openSettings').setAttribute('aria-label', t('settings'));
     }
 
     for (const btn of document.querySelectorAll('[data-lang]')) {
@@ -180,14 +277,78 @@
         const secure = location.protocol === 'https:' ? '; Secure' : '';
         document.cookie = `${LANG_COOKIE}=${lang}; Max-Age=31536000; Path=${cookiePath}; SameSite=Lax${secure}`;
         applyLang();
+        renderSelectors();
         update();
+        if ($('settings').open) renderSettings();
       });
     }
 
-    target.value = localStorage.getItem(STORAGE_KEY) || '15:30';
+    let defaults = { devices: [] };
+    const toMinutes = hm => {
+      const [h, m] = String(hm).split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+    const newDevice = target => ({ id: uid(), name: '', target, program: '', programs: [] });
+
+    function defaultState() {
+      const devices = defaults.devices.map(d => ({
+        id: d.id,
+        name: '',
+        defaultName: d.name,
+        target: d.target || '15:30',
+        program: d.programs[0]?.id ?? '',
+        programs: d.programs.map(p => ({ id: p.id, name: p.name, minutes: toMinutes(p.duration) })),
+      }));
+      if (!devices.length) devices.push(newDevice('15:30'));
+      return { device: devices[0].id, devices };
+    }
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STATE_KEY));
+        if (saved?.devices?.length) return saved;
+      } catch { /* corrupt storage; fall back to defaults */ }
+      const fresh = defaultState();
+      const legacyTarget = localStorage.getItem('targetTime');
+      if (legacyTarget) fresh.devices[0].target = legacyTarget;
+      return fresh;
+    }
+
+    let state;
+    const save = () => localStorage.setItem(STATE_KEY, JSON.stringify(state));
+    const currentDevice = () => state.devices.find(d => d.id === state.device) || state.devices[0];
+    const currentProgram = dev => dev.programs.find(p => p.id === dev.program) || dev.programs[0];
+    const localizedDefaultName = d => d.defaultName?.[lang] || d.defaultName?.en;
+    const deviceName = d => d.name.trim() || localizedDefaultName(d) || t('newDevice');
+    const programName = p => p.name.trim() || t('unnamed');
+
+    function renderSelectors() {
+      const dev = currentDevice();
+      deviceSel.replaceChildren(...state.devices.map(d => new Option(deviceName(d), d.id)));
+      deviceSel.value = dev.id;
+      programSel.replaceChildren(...dev.programs.map(p =>
+        new Option(`${fmtHm(p.minutes)}h – ${programName(p)}`, p.id)));
+      programSel.value = currentProgram(dev)?.id ?? '';
+      programSel.disabled = !dev.programs.length;
+      target.value = dev.target;
+    }
+
+    deviceSel.addEventListener('change', () => {
+      state.device = deviceSel.value;
+      save();
+      renderSelectors();
+      update();
+    });
+    programSel.addEventListener('change', () => {
+      currentDevice().program = programSel.value;
+      save();
+      update();
+    });
     target.addEventListener('change', () => {
-      if (!target.value) target.value = localStorage.getItem(STORAGE_KEY) || '15:30';
-      localStorage.setItem(STORAGE_KEY, target.value);
+      const dev = currentDevice();
+      if (!target.value) target.value = dev.target;
+      dev.target = target.value;
+      save();
       update();
     });
     start.addEventListener('change', update);
@@ -201,16 +362,98 @@
       });
     }
 
-    const fmtTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    const fmtOffset = min => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
+    function fmtTime(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+    function fmtHm(min) { return `${Math.floor(min / 60)}:${pad(min % 60)}`; }
+
+    function el(tag, props = {}, ...children) {
+      const node = Object.assign(document.createElement(tag), props);
+      node.append(...children);
+      return node;
+    }
+
+    function changed(rerenderSettings = false) {
+      save();
+      renderSelectors();
+      update();
+      if (rerenderSettings) renderSettings();
+    }
+
+    function renderSettings() {
+      $('settingsList').replaceChildren(...state.devices.map(dev => {
+        const nameInput = el('input', {
+          type: 'text', value: dev.name, className: 'grow',
+          placeholder: localizedDefaultName(dev) || t('deviceName'),
+        });
+        nameInput.addEventListener('input', () => { dev.name = nameInput.value; changed(); });
+
+        const delDevice = el('button', {
+          type: 'button', className: 'icon-btn', textContent: '×',
+          title: t('deleteDevice'), disabled: state.devices.length < 2,
+        });
+        delDevice.addEventListener('click', () => {
+          if (!confirm(t('deleteConfirm')(deviceName(dev)))) return;
+          state.devices = state.devices.filter(d => d !== dev);
+          changed(true);
+        });
+
+        const programRows = dev.programs.map(p => {
+          const name = el('input', { type: 'text', value: p.name, className: 'grow', placeholder: t('programName') });
+          name.addEventListener('input', () => { p.name = name.value; changed(); });
+
+          const hours = el('input', { type: 'number', min: 0, max: 23, value: Math.floor(p.minutes / 60), inputMode: 'numeric', className: 'num' });
+          const mins = el('input', { type: 'number', min: 0, max: 59, value: p.minutes % 60, inputMode: 'numeric', className: 'num' });
+          const setDuration = () => {
+            p.minutes = clamp(Math.trunc(+hours.value) || 0, 0, 23) * 60 + clamp(Math.trunc(+mins.value) || 0, 0, 59);
+            changed();
+          };
+          hours.addEventListener('input', setDuration);
+          mins.addEventListener('input', setDuration);
+
+          const del = el('button', { type: 'button', className: 'icon-btn', textContent: '×', title: t('deleteProgram') });
+          del.addEventListener('click', () => {
+            dev.programs = dev.programs.filter(x => x !== p);
+            changed(true);
+          });
+
+          return el('div', { className: 'line' }, name, hours, ':', mins, del);
+        });
+
+        const addProgram = el('button', { type: 'button', className: 'btn', textContent: t('addProgram') });
+        addProgram.addEventListener('click', () => {
+          const p = { id: uid(), name: '', minutes: 60 };
+          dev.programs.push(p);
+          if (dev.programs.length === 1) dev.program = p.id;
+          changed(true);
+        });
+
+        return el('fieldset', {}, el('div', { className: 'line' }, nameInput, delDevice), ...programRows, addProgram);
+      }));
+    }
+
+    $('openSettings').addEventListener('click', () => {
+      renderSettings();
+      $('settings').showModal();
+    });
+    $('closeSettings').addEventListener('click', () => $('settings').close());
+    $('addDevice').addEventListener('click', () => {
+      state.devices.push({ id: uid(), name: '', target: currentDevice().target, program: '', programs: [] });
+      changed(true);
+    });
+    $('resetDefaults').addEventListener('click', () => {
+      if (!confirm(t('resetConfirm'))) return;
+      state = defaultState();
+      changed(true);
+    });
 
     function update() {
+      const prog = currentProgram(currentDevice());
+      const runtime = prog ? prog.minutes : 0;
       const custom = Boolean(start.value);
-      const now = new Date();
-      now.setSeconds(0, 0);
+      const base = new Date();
+      base.setSeconds(0, 0);
       if (custom) {
         const [sh, sm] = start.value.split(':').map(Number);
-        now.setHours(sh, sm);
+        base.setHours(sh, sm);
       }
       const startText = $('startText');
       startText.textContent = custom ? start.value : '';
@@ -218,34 +461,58 @@
         const hint = document.createElement('span');
         hint.className = 'now';
         hint.textContent = t('nowHint');
-        startText.append(hint, fmtTime(now));
+        startText.append(hint, fmtTime(base));
       }
       startReset.hidden = !custom;
       $('targetText').textContent = target.value;
 
       const [h, m] = target.value.split(':').map(Number);
-      const goal = new Date(now);
+      const goal = new Date(base);
       goal.setHours(h, m, 0, 0);
-      if (goal <= now) goal.setDate(goal.getDate() + 1);
+      if (goal <= base) goal.setDate(goal.getDate() + 1);
 
-      const diff = (goal - now) / 60000;
-      const lower = Math.floor(diff / STEP) * STEP;
+      // Offset delays the program start, so the runtime is added on top of it.
+      const delay = (goal - base) / 60000 - runtime;
+      const finishAt = min => fmtTime(new Date(base.getTime() + (min + runtime) * 60000));
+      const finish = $('finish');
+      $('runtime').textContent = t('runtime')(fmtHm(runtime));
+
+      if (delay < 0) {
+        $('offset').textContent = fmtHm(0);
+        finish.textContent = t('tooLate')(finishAt(0));
+        finish.classList.add('warn');
+        $('alts').hidden = true;
+        return;
+      }
+
+      const lower = Math.floor(delay / STEP) * STEP;
       const upper = lower + STEP;
-      const best = diff - lower <= upper - diff ? lower : upper;
-      const finishAt = min => fmtTime(new Date(now.getTime() + min * 60000));
+      const best = delay - lower <= upper - delay ? lower : upper;
 
-      $('offset').textContent = fmtOffset(best);
-      $('finish').textContent = t('finishes')(finishAt(best));
-      $('lowerOffset').textContent = fmtOffset(lower);
+      $('offset').textContent = fmtHm(best);
+      finish.textContent = t('finishes')(finishAt(best));
+      finish.classList.remove('warn');
+      $('alts').hidden = false;
+      $('lowerOffset').textContent = fmtHm(lower);
       $('lowerFinish').textContent = `→ ${finishAt(lower)}`;
-      $('upperOffset').textContent = fmtOffset(upper);
+      $('upperOffset').textContent = fmtHm(upper);
       $('upperFinish').textContent = `→ ${finishAt(upper)}`;
     }
 
-    applyLang();
-    update();
-    setInterval(update, 15000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) update(); });
+    async function init() {
+      try {
+        const res = await fetch('defaults.json');
+        if (res.ok) defaults = await res.json();
+      } catch { /* offline and not cached yet; start with an empty device */ }
+      state = loadState();
+      applyLang();
+      renderSelectors();
+      update();
+      setInterval(update, 15000);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) update(); });
+    }
+
+    init();
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js');
