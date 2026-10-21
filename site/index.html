@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1e3a8a">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Washer Offset</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <style>
+    :root { color-scheme: light dark; --accent: #2563eb; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font-family: system-ui, sans-serif;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 24px 16px; gap: 20px; background: Canvas; color: CanvasText;
+    }
+    h1 { margin: 0; font-size: 1.3rem; font-weight: 600; opacity: .8; }
+    .card {
+      width: 100%; max-width: 420px; padding: 20px; border-radius: 16px;
+      background: color-mix(in srgb, CanvasText 6%, Canvas);
+    }
+    label { display: block; font-size: .9rem; opacity: .7; margin-bottom: 6px; }
+    .time {
+      position: relative; font-size: 2rem; padding: 8px 12px; border-radius: 10px;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas);
+      background: Canvas; cursor: pointer;
+    }
+    /* Native input sits invisibly on top so taps open the system picker; text shows 24h. */
+    .time input {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      opacity: 0; border: 0; cursor: pointer;
+    }
+    .now { font-size: .95rem; opacity: .7; margin-top: 12px; }
+    .result { text-align: center; }
+    .offset { font-size: 4.5rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+    .finish { font-size: 1.1rem; margin-top: 6px; }
+    .alts { display: flex; gap: 10px; margin-top: 16px; }
+    .alt {
+      flex: 1; text-align: center; padding: 10px; border-radius: 10px;
+      background: color-mix(in srgb, CanvasText 4%, Canvas);
+    }
+    .alt b { display: block; font-size: 1.4rem; }
+    .alt span { font-size: .85rem; opacity: .7; }
+  </style>
+</head>
+<body>
+  <h1>Washing machine offset</h1>
+
+  <div class="card">
+    <label for="target">Finish at</label>
+    <div class="time">
+      <span id="targetText"></span>
+      <input type="time" id="target" required>
+    </div>
+    <div class="now">Now: <span id="now"></span></div>
+  </div>
+
+  <div class="card result">
+    <label>Set offset to</label>
+    <div class="offset" id="offset">–</div>
+    <div class="finish" id="finish"></div>
+    <div class="alts">
+      <div class="alt"><b id="lowerOffset"></b><span id="lowerFinish"></span></div>
+      <div class="alt"><b id="upperOffset"></b><span id="upperFinish"></span></div>
+    </div>
+  </div>
+
+  <script>
+    const STEP = 30;
+    const STORAGE_KEY = 'targetTime';
+    const $ = id => document.getElementById(id);
+    const target = $('target');
+    const pad = n => String(n).padStart(2, '0');
+
+    target.value = localStorage.getItem(STORAGE_KEY) || '15:30';
+    target.addEventListener('change', () => {
+      if (!target.value) target.value = localStorage.getItem(STORAGE_KEY) || '15:30';
+      localStorage.setItem(STORAGE_KEY, target.value);
+      update();
+    });
+    target.addEventListener('click', () => {
+      try { target.showPicker(); } catch { /* not supported; native tap behavior applies */ }
+    });
+
+    const fmtTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const fmtOffset = min => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
+
+    function update() {
+      const now = new Date();
+      $('now').textContent = fmtTime(now);
+      $('targetText').textContent = target.value;
+
+      const [h, m] = target.value.split(':').map(Number);
+      const goal = new Date(now);
+      goal.setHours(h, m, 0, 0);
+      if (goal <= now) goal.setDate(goal.getDate() + 1);
+
+      const diff = (goal - now) / 60000;
+      const lower = Math.floor(diff / STEP) * STEP;
+      const upper = lower + STEP;
+      const best = diff - lower <= upper - diff ? lower : upper;
+      const finishAt = min => fmtTime(new Date(now.getTime() + min * 60000));
+
+      $('offset').textContent = fmtOffset(best);
+      $('finish').textContent = `finishes ≈ ${finishAt(best)}`;
+      $('lowerOffset').textContent = fmtOffset(lower);
+      $('lowerFinish').textContent = `→ ${finishAt(lower)}`;
+      $('upperOffset').textContent = fmtOffset(upper);
+      $('upperFinish').textContent = `→ ${finishAt(upper)}`;
+    }
+
+    update();
+    setInterval(update, 15000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) update(); });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
